@@ -153,6 +153,7 @@ class CrawlerCase(unittest.IsolatedAsyncioTestCase):
         for index, thread in enumerate(result.conversation_threads):
             print("==========")
             print(f"{index + 1}. {thread.id=} ({thread.user.handle})")
+            print(f"{thread.user.profile_image_url=}")
             print(f"{thread.full_text=}")
             print(f"{thread.text=}")
         await context.close()
