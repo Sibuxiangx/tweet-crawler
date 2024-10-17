@@ -1,3 +1,5 @@
+from playwright.sync_api import BrowserContextfrom tweet_crawler import TwitterStatusCrawler
+
 # Tweet Crawler
 
 ![Code Style](https://img.shields.io/badge/code%20style-black-000000.svg)
@@ -83,7 +85,8 @@ url: str = ...  # URL of the tweet to crawl
 async with async_playwright() as p:
     browser = await p.chromium.launch()
     context = await browser.new_context()
-    crawler = TweetCrawler(context, url)
+    page = await browser.new_page()
+    crawler = TwitterStatusCrawler(page, url)
 ```
 
 ### Running in Guest Mode
@@ -91,7 +94,7 @@ async with async_playwright() as p:
 To crawl tweets as a guest (without replies), simply run:
 
 ```python
-await crawler.run_and_parse()
+await crawler.run()
 ```
 
 ### Running with Cookies
@@ -105,7 +108,9 @@ Here shows an example of how to add cookies to the crawler from environment vari
 > Use environment variables or a secure method to store them.
 
 ```python
-await crawler.add_cookies(
+context: BrowserContext
+
+await context.add_cookies(
     [
         {
             "name": "auth_multi",
@@ -144,7 +149,7 @@ await crawler.add_cookies(
 Then, you can run the crawler as usual:
 
 ```python
-await crawler.run_and_parse()
+await crawler.run()
 ```
 
 ## Data Output

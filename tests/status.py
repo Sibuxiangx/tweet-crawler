@@ -2,118 +2,104 @@ import os
 import unittest
 
 from dotenv import load_dotenv
-from playwright.async_api import Browser, Playwright, async_playwright
+from playwright.async_api import (
+    Browser,
+    BrowserContext,
+    Page,
+    Playwright,
+    async_playwright,
+)
 
-from tweet_crawler.crawler import TweetCrawler
+from tweet_crawler import TwitterStatusCrawler
 
 load_dotenv()
 
 
-class CrawlerCase(unittest.IsolatedAsyncioTestCase):
+class StatusCase(unittest.IsolatedAsyncioTestCase):
     playwright: Playwright
     browser: Browser
+    context: BrowserContext
+    page: Page
 
     async def asyncSetUp(self):
         self.playwright = await async_playwright().start()
         self.browser = await self.playwright.chromium.launch()
+        self.context = await self.browser.new_context()
+        self.page = await self.context.new_page()
 
     async def asyncTearDown(self):
+        await self.page.close()
+        await self.context.close()
         await self.browser.close()
         await self.playwright.stop()
 
     async def test_plain_text(self):
-        context = await self.browser.new_context()
-        url = os.environ["TWEET_PLAIN_TEXT"]
-        crawler = TweetCrawler(context, url)
-        result = await crawler.run_and_parse()
-        assert result
+        crawler = TwitterStatusCrawler(self.page, os.environ["TWEET_PLAIN_TEXT"])
+        result = await crawler.run()
+        print("==========")
         print(f"{result.full_text=}")
         print(f"{result.text=}")
-        await context.close()
 
     async def test_tweet_animated_gif(self):
-        context = await self.browser.new_context()
-        url = os.environ["TWEET_ANIMATED_GIF"]
-        crawler = TweetCrawler(context, url)
-        result = await crawler.run_and_parse()
-        assert result
+        crawler = TwitterStatusCrawler(self.page, os.environ["TWEET_ANIMATED_GIF"])
+        result = await crawler.run()
         self.assertIsNotNone(
             next(
                 filter(lambda x: x.type == "animated_gif", result.entities.media), None
             )
         )
+        print("==========")
         print(f"{result.entities.media=}")
-        await context.close()
 
     async def test_tweet_video(self):
-        context = await self.browser.new_context()
-        url = os.environ["TWEET_VIDEO"]
-        crawler = TweetCrawler(context, url)
-        result = await crawler.run_and_parse()
-        assert result
+        crawler = TwitterStatusCrawler(self.page, os.environ["TWEET_VIDEO"])
+        result = await crawler.run()
         self.assertIsNotNone(
             next(filter(lambda x: x.type == "video", result.entities.media), None)
         )
+        print("==========")
         print(f"{result.entities.media=}")
-        await context.close()
 
     async def test_tweet_photo(self):
-        context = await self.browser.new_context()
-        url = os.environ["TWEET_PHOTO"]
-        crawler = TweetCrawler(context, url)
-        result = await crawler.run_and_parse()
-        assert result
+        crawler = TwitterStatusCrawler(self.page, os.environ["TWEET_PHOTO"])
+        result = await crawler.run()
         self.assertIsNotNone(
             next(filter(lambda x: x.type == "photo", result.entities.media), None)
         )
+        print("==========")
         print(f"{result.entities.media=}")
-        await context.close()
 
     async def test_tweet_hashtag(self):
-        context = await self.browser.new_context()
-        url = os.environ["TWEET_HASHTAG"]
-        crawler = TweetCrawler(context, url)
-        result = await crawler.run_and_parse()
-        assert result
+        crawler = TwitterStatusCrawler(self.page, os.environ["TWEET_HASHTAG"])
+        result = await crawler.run()
         self.assertTrue(result.entities.hashtags)
+        print("==========")
         print(f"{result.entities.hashtags=}")
-        await context.close()
 
     async def test_tweet_symbol(self):
-        context = await self.browser.new_context()
-        url = os.environ["TWEET_SYMBOL"]
-        crawler = TweetCrawler(context, url)
-        result = await crawler.run_and_parse()
-        assert result
+        crawler = TwitterStatusCrawler(self.page, os.environ["TWEET_SYMBOL"])
+        result = await crawler.run()
         self.assertTrue(result.entities.symbols)
+        print("==========")
         print(f"{result.entities.symbols=}")
-        await context.close()
 
     async def test_tweet_url(self):
-        context = await self.browser.new_context()
-        url = os.environ["TWEET_URL"]
-        crawler = TweetCrawler(context, url)
-        result = await crawler.run_and_parse()
-        assert result
+        crawler = TwitterStatusCrawler(self.page, os.environ["TWEET_URL"])
+        result = await crawler.run()
         self.assertTrue(result.entities.urls)
+        print("==========")
         print(f"{result.entities.urls=}")
-        await context.close()
 
     async def test_tweet_user_mention(self):
-        context = await self.browser.new_context()
-        url = os.environ["TWEET_USER_MENTION"]
-        crawler = TweetCrawler(context, url)
-        result = await crawler.run_and_parse()
-        assert result
+        crawler = TwitterStatusCrawler(self.page, os.environ["TWEET_USER_MENTION"])
+        result = await crawler.run()
         self.assertTrue(result.entities.user_mentions)
+        print("==========")
         print(f"{result.entities.user_mentions=}")
-        await context.close()
 
     async def test_authenticated(self):
         context = await self.browser.new_context()
-        url = os.environ["TWEET_WITH_REPLY"]
-        crawler = TweetCrawler(context, url)
-        await crawler.add_cookies(
+        await context.add_cookies(
             [
                 {
                     "name": "auth_multi",
@@ -147,16 +133,21 @@ class CrawlerCase(unittest.IsolatedAsyncioTestCase):
                 },
             ]
         )
-        result = await crawler.run_and_parse()
-        assert result
-        self.assertIsNotNone(result.conversation_threads)
-        for index, thread in enumerate(result.conversation_threads):
-            print("==========")
-            print(f"{index + 1}. {thread.id=} ({thread.user.handle})")
-            print(f"{thread.user.profile_image_url=}")
-            print(f"{thread.full_text=}")
-            print(f"{thread.text=}")
-        await context.close()
+        page = await context.new_page()
+        try:
+            url = os.environ["TWEET_WITH_REPLY"]
+            crawler = TwitterStatusCrawler(page, url)
+            result = await crawler.run()
+            self.assertIsNotNone(result.conversation_threads)
+            for index, thread in enumerate(result.conversation_threads):
+                print("==========")
+                print(f"{index + 1}. {thread.id=} ({thread.user.handle})")
+                print(f"{thread.user.profile_image_url=}")
+                print(f"{thread.full_text=}")
+                print(f"{thread.text=}")
+        finally:
+            await page.close()
+            await context.close()
 
 
 if __name__ == "__main__":

@@ -1,10 +1,15 @@
 from datetime import datetime
-from typing import List, Literal, Optional
+from typing import Annotated, List, Literal, Optional
 
-from pydantic import AnyHttpUrl, BaseModel, Field, field_validator
+from pydantic import AnyHttpUrl, BaseModel, BeforeValidator, Field, field_validator
+from typing_extensions import Self
 
 
-class TweetUser(BaseModel):
+def _twitter_datetime(v: str) -> datetime:
+    return datetime.strptime(v, "%a %b %d %H:%M:%S %z %Y")
+
+
+class TwitterUser(BaseModel):
     id: int
     name: str
     screen_name: str
@@ -12,7 +17,7 @@ class TweetUser(BaseModel):
     description: str
     protected: Optional[bool] = None
     verified: bool
-    created_at: datetime
+    created_at: Annotated[datetime, BeforeValidator(_twitter_datetime)]
     pinned_tweet_ids: List[int] = []
     profile_image_url_normal: AnyHttpUrl = Field(alias="profile_image_url_https")
     profile_banner_url: Optional[AnyHttpUrl] = None
@@ -25,11 +30,6 @@ class TweetUser(BaseModel):
     following: Optional[bool] = None
     can_dm: Optional[bool] = None
 
-    @field_validator("created_at", mode="before")  # noqa
-    @classmethod
-    def __validate_create_at(cls, v: str):
-        return datetime.strptime(v, "%a %b %d %H:%M:%S %z %Y")
-
     @property
     def handle(self):
         return f"@{self.screen_name}"
@@ -39,7 +39,7 @@ class TweetUser(BaseModel):
         return str(self.profile_image_url_normal).replace("_normal", "")
 
     @classmethod
-    def from_result(cls, result: dict) -> "TweetUser":
+    def from_result(cls, result: dict) -> Self:
         return cls.model_validate(result["legacy"] | {"id": result["rest_id"]})
 
 
@@ -112,14 +112,14 @@ class TweetEntities(BaseModel):
 
 class Tweet(BaseModel):
     id: int = Field(alias="id_str")
-    created_at: datetime
+    created_at: Annotated[datetime, BeforeValidator(_twitter_datetime)]
     full_text: str
     display_text_range: List[int]
     lang: str
     possibly_sensitive: bool = False
     entities: TweetEntities
-    conversation_threads: List["Tweet"] = []
-    user: TweetUser
+    conversation_threads: List[Self] = []
+    user: TwitterUser
     views_count: int
     bookmark_count: int
     favorite_count: int
@@ -134,17 +134,14 @@ class Tweet(BaseModel):
     def text(self) -> str:
         return self.full_text[self.display_text_range[0] : self.display_text_range[1]]
 
-    @field_validator("created_at", mode="before")  # noqa
     @classmethod
-    def __validate_create_at(cls, v: str):
-        return datetime.strptime(v, "%a %b %d %H:%M:%S %z %Y")
-
-    @classmethod
-    def from_result(cls, result: dict) -> "Tweet":
+    def from_result(cls, result: dict) -> Self:
         return cls.model_validate(
             result["legacy"]
             | {
                 "views_count": result["views"]["count"],
-                "user": TweetUser.from_result(result["core"]["user_results"]["result"]),
+                "user": TwitterUser.from_result(
+                    result["core"]["user_results"]["result"]
+                ),
             }
         )
