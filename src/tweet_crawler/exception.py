@@ -1,0 +1,6 @@
+class TwitterException(Exception):
+    ...
+
+
+class NotAuthenticated(TwitterException, PermissionError):
+    ...

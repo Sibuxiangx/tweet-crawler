@@ -33,6 +33,47 @@ class StatusCase(unittest.IsolatedAsyncioTestCase):
         await self.browser.close()
         await self.playwright.stop()
 
+    async def new_context(self, auth: bool):
+        await self.page.close()
+        await self.context.close()
+        self.context = await self.browser.new_context()
+        if auth:
+            await self.context.add_cookies(
+                [
+                    {
+                        "name": "auth_multi",
+                        "value": os.environ["AUTH_MULTI"],
+                        "domain": ".x.com",
+                        "path": "/",
+                        "expires": float(os.environ["AUTH_MULTI_EXPIRES"]),
+                        "httpOnly": True,
+                        "secure": True,
+                        "sameSite": "Lax",
+                    },
+                    {
+                        "name": "auth_token",
+                        "value": os.environ["AUTH_TOKEN"],
+                        "domain": ".x.com",
+                        "path": "/",
+                        "expires": float(os.environ["AUTH_TOKEN_EXPIRES"]),
+                        "httpOnly": True,
+                        "sameSite": "None",
+                        "secure": True,
+                    },
+                    {
+                        "name": "ct0",
+                        "value": os.environ["CT0"],
+                        "domain": ".x.com",
+                        "path": "/",
+                        "expires": float(os.environ["CT0_EXPIRES"]),
+                        "httpOnly": False,
+                        "sameSite": "Lax",
+                        "secure": True,
+                    },
+                ]
+            )
+        self.page = await self.context.new_page()
+
     async def test_plain_text(self):
         crawler = TwitterStatusCrawler(self.page, os.environ["TWEET_PLAIN_TEXT"])
         result = await crawler.run()
@@ -98,56 +139,18 @@ class StatusCase(unittest.IsolatedAsyncioTestCase):
         print(f"{result.entities.user_mentions=}")
 
     async def test_authenticated(self):
-        context = await self.browser.new_context()
-        await context.add_cookies(
-            [
-                {
-                    "name": "auth_multi",
-                    "value": os.environ["AUTH_MULTI"],
-                    "domain": ".x.com",
-                    "path": "/",
-                    "expires": float(os.environ["AUTH_MULTI_EXPIRES"]),
-                    "httpOnly": True,
-                    "secure": True,
-                    "sameSite": "Lax",
-                },
-                {
-                    "name": "auth_token",
-                    "value": os.environ["AUTH_TOKEN"],
-                    "domain": ".x.com",
-                    "path": "/",
-                    "expires": float(os.environ["AUTH_TOKEN_EXPIRES"]),
-                    "httpOnly": True,
-                    "sameSite": "None",
-                    "secure": True,
-                },
-                {
-                    "name": "ct0",
-                    "value": os.environ["CT0"],
-                    "domain": ".x.com",
-                    "path": "/",
-                    "expires": float(os.environ["CT0_EXPIRES"]),
-                    "httpOnly": False,
-                    "sameSite": "Lax",
-                    "secure": True,
-                },
-            ]
-        )
-        page = await context.new_page()
-        try:
-            url = os.environ["TWEET_WITH_REPLY"]
-            crawler = TwitterStatusCrawler(page, url)
-            result = await crawler.run()
-            self.assertIsNotNone(result.conversation_threads)
-            for index, thread in enumerate(result.conversation_threads):
-                print("==========")
-                print(f"{index + 1}. {thread.id=} ({thread.user.handle})")
-                print(f"{thread.user.profile_image_url=}")
-                print(f"{thread.full_text=}")
-                print(f"{thread.text=}")
-        finally:
-            await page.close()
-            await context.close()
+        await self.new_context(auth=True)
+        url = os.environ["TWEET_WITH_REPLY"]
+        crawler = TwitterStatusCrawler(self.page, url)
+        result = await crawler.run()
+        self.assertIsNotNone(result.conversation_threads)
+        for index, thread in enumerate(result.conversation_threads):
+            print("==========")
+            print(f"{index + 1}. {thread.id=} ({thread.user.handle})")
+            print(f"{thread.user.profile_image_url=}")
+            print(f"{thread.full_text=}")
+            print(f"{thread.text=}")
+        await self.new_context(auth=False)
 
 
 if __name__ == "__main__":
