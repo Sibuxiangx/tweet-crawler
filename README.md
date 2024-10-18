@@ -1,5 +1,3 @@
-from playwright.sync_api import BrowserContextfrom tweet_crawler import TwitterStatusCrawler
-
 # Tweet Crawler
 
 ![Code Style](https://img.shields.io/badge/code%20style-black-000000.svg)
