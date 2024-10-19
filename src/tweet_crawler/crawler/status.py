@@ -1,63 +1,44 @@
-import asyncio
 import json
 import re
 from typing import Final
 
-from playwright.async_api import Page
+from playwright.async_api import Frame
 
+from ..exception import TweetUnavailable
 from ..model import Tweet
+from ._base import StaticCrawler
 
 TWEET_DETAIL_PATTERN: Final[re.Pattern] = re.compile(
-    r"^https://(?:twitter|x)\.com/i/api/graphql/[^/]+/TweetDetail(\?.*)?$"
+    r"^https?://(?:twitter|x)\.com/i/api/graphql/[^/]+/TweetDetail(\?.*)?$"
 )
 TWEET_BY_ID_PATTERN: Final[re.Pattern] = re.compile(
-    r"^https://api\.(?:twitter|x)\.com/graphql/[^/]+/TweetResultByRestId(\?.*)?$"
+    r"^https?://api\.(?:twitter|x)\.com/graphql/[^/]+/TweetResultByRestId(\?.*)?$"
 )
 
 
-class TwitterStatusCrawler:
-    done: asyncio.Event
-    content: dict
-    url: str
-    page: Page
+class TwitterStatusCrawler(StaticCrawler[Tweet]):
+    async def handle_redirection(self, frame: Frame) -> None:
+        pass
 
-    def __init__(self, page: Page, url: str):
-        self.page = page
-        self.url = url
-        self.done = asyncio.Event()
-
-    async def handle_response(self, response):
+    async def handle_response(self, response) -> None:
         if TWEET_DETAIL_PATTERN.match(response.url) or TWEET_BY_ID_PATTERN.match(
             response.url
         ):
             try:
-                response_body = await response.body()
-                self.content = json.loads(response_body)
+                await self.parse(json.loads(await response.body()))
             finally:
-                self.done.set()
+                self.done_signal.set()
 
-    async def run(self) -> Tweet:
-        self.page.on("response", self.handle_response)
-        await self.page.goto(self.url)
-        await self.done.wait()
-        if "tweetResult" in self.content["data"]:
-            return Tweet.from_result(self.content["data"]["tweetResult"]["result"])
-        ins = self.content["data"]["threaded_conversation_with_injections_v2"][
-            "instructions"
-        ]
-        valid_ins = next(filter(lambda x: x["type"] == "TimelineAddEntries", ins))
-        tweet = Tweet.from_result(
-            valid_ins["entries"].pop(0)["content"]["itemContent"]["tweet_results"][
-                "result"
-            ]
-        )
-        for entry in valid_ins["entries"]:
-            if entry["content"]["entryType"] == "TimelineTimelineModule":
-                tweet.conversation_threads.append(
-                    Tweet.from_result(
-                        entry["content"]["items"][0]["item"]["itemContent"][
-                            "tweet_results"
-                        ]["result"]
-                    )
-                )
-        return tweet
+    async def parse(self, content: dict) -> None:
+        data = content["data"]
+        if "tweetResult" in data:
+            result = data["tweetResult"]["result"]
+            if result["__typename"] == "TweetUnavailable":
+                self.exception = TweetUnavailable(result["reason"])
+                self.exception_signal.set()
+            else:
+                self.result = Tweet.from_result(data["tweetResult"]["result"])
+        elif "threaded_conversation_with_injections_v2" in data:
+            self.result = Tweet.from_instructions(
+                data["threaded_conversation_with_injections_v2"]["instructions"]
+            )

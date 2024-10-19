@@ -118,7 +118,7 @@ class Tweet(BaseModel):
     lang: str
     possibly_sensitive: bool = False
     entities: TweetEntities
-    conversation_threads: List[Self] = []
+    conversation_threads: List[List[Self]] = []
     user: TwitterUser
     views_count: int
     bookmark_count: int
@@ -135,11 +135,47 @@ class Tweet(BaseModel):
         return self.full_text[self.display_text_range[0] : self.display_text_range[1]]
 
     @classmethod
+    def from_instructions(cls, result: List[dict]) -> Self:
+        base_tweet = None
+        for instruction in result:
+            if instruction["type"] == "TimelineAddEntries":
+                entries: List[dict] = instruction["entries"]
+                base_tweet = cls.from_entry(entries.pop(0))[0]
+                for entry in entries:
+                    if entry["entryId"].startswith("tweet-") or entry[
+                        "entryId"
+                    ].startswith("conversationthread-"):
+                        base_tweet.conversation_threads.append(cls.from_entry(entry))
+        assert base_tweet
+        return base_tweet
+
+    @classmethod
+    def from_entry(cls, result: dict) -> List[Self]:
+        if result["entryId"].startswith("tweet"):
+            return [cls.from_timeline_item(result["content"])]
+        else:
+            return cls.from_timeline_module(result["content"])
+
+    @classmethod
+    def from_timeline_item(cls, result: dict) -> Self:
+        item = result["itemContent"]
+        assert item["itemType"] == "TimelineTweet"
+        return cls.from_result(item["tweet_results"]["result"])
+
+    @classmethod
+    def from_timeline_module(cls, result: dict) -> List[Self]:
+        return [
+            cls.from_result(item["item"]["itemContent"]["tweet_results"]["result"])
+            for item in result["items"]
+            if "cursor" not in item["entryId"]
+        ]
+
+    @classmethod
     def from_result(cls, result: dict) -> Self:
         return cls.model_validate(
             result["legacy"]
             | {
-                "views_count": result["views"]["count"],
+                "views_count": result["views"].get("count", 0),
                 "user": TwitterUser.from_result(
                     result["core"]["user_results"]["result"]
                 ),
