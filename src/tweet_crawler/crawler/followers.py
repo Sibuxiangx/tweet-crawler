@@ -13,7 +13,7 @@ FOLLOWERS_PATTERN: Final[re.Pattern] = re.compile(
 )
 
 
-class TwitterFollowsCrawler:
+class TwitterFollowersCrawler:
     done: asyncio.Event
     exception_signal: asyncio.Event
     exception: Exception

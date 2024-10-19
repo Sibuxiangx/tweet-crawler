@@ -10,13 +10,13 @@ from playwright.async_api import (
     async_playwright,
 )
 
-from tweet_crawler import TwitterFollowersCrawler
+from tweet_crawler import TwitterFollowingCrawler
 from tweet_crawler.exception import NotAuthenticated
 
 load_dotenv()
 
 
-class FollowersCase(unittest.IsolatedAsyncioTestCase):
+class FollowingCase(unittest.IsolatedAsyncioTestCase):
     playwright: Playwright
     browser: Browser
     context: BrowserContext
@@ -78,14 +78,14 @@ class FollowersCase(unittest.IsolatedAsyncioTestCase):
     async def test_not_authenticated(self):
         await self.new_context(auth=False)
         with self.assertRaises(NotAuthenticated):
-            crawler = TwitterFollowersCrawler(
+            crawler = TwitterFollowingCrawler(
                 self.page, os.environ["TWITTER_SCREEN_NAME"]
             )
             await crawler.run()
 
     async def test_authenticated(self):
         await self.new_context(auth=True)
-        crawler = TwitterFollowersCrawler(self.page, os.environ["TWITTER_SCREEN_NAME"])
+        crawler = TwitterFollowingCrawler(self.page, os.environ["TWITTER_SCREEN_NAME"])
         result = await crawler.run()
         print("==========")
         print(f"{len(result)=}")
