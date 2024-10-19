@@ -151,7 +151,3 @@ class StatusCase(unittest.IsolatedAsyncioTestCase):
             print(f"{thread.full_text=}")
             print(f"{thread.text=}")
         await self.new_context(auth=False)
-
-
-if __name__ == "__main__":
-    unittest.main()

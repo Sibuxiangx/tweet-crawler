@@ -91,7 +91,3 @@ class FollowersCase(unittest.IsolatedAsyncioTestCase):
         print(f"{len(result)=}")
         for index, user in enumerate(result[:10]):
             print(f"{index + 1}. {user.id=} ({user.handle})")
-
-
-if __name__ == "__main__":
-    unittest.main()
