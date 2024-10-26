@@ -172,6 +172,8 @@ class Tweet(BaseModel):
 
     @classmethod
     def from_result(cls, result: dict) -> Self:
+        if result["__typename"] == "TweetWithVisibilityResults":
+            result = result["tweet"]
         return cls.model_validate(
             result["legacy"]
             | {

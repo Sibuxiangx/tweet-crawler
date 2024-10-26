@@ -141,6 +141,14 @@ class StatusCase(unittest.IsolatedAsyncioTestCase):
             print(f"\t{thread[0].text=}")
         print("===== done =====")
 
+    async def test_tweet_with_visibility(self):
+        print("\n===== test_tweet_with_visibility =====")
+        crawler = TwitterStatusCrawler(self.page, os.environ["TWEET_WITH_VISIBILITY"])
+        result = await crawler.run()
+        print(f"{result.full_text=}")
+        print(f"{result.text=}")
+        print("===== done =====")
+
 
 if __name__ == "__main__":
     unittest.main()
