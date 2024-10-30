@@ -9,6 +9,80 @@ def _twitter_datetime(v: str) -> datetime:
     return datetime.strptime(v, "%a %b %d %H:%M:%S %z %Y")
 
 
+class TwitterEntity(BaseModel):
+    indices: List[int]
+
+
+class TwitterEntityHashTag(TwitterEntity):
+    text: str
+
+
+class TwitterEntityMediaPhoto(TwitterEntity):
+    type: Literal["photo"]
+    url: AnyHttpUrl = Field(alias="media_url_https")
+    expanded_url: AnyHttpUrl
+
+
+class TwitterEntityMediaVideo(TwitterEntity):
+    type: Literal["video"]
+    url: AnyHttpUrl = Field(alias="video_info")
+    expanded_url: AnyHttpUrl
+
+    @field_validator("url", mode="before")  # noqa
+    @classmethod
+    def __validate_url(cls, v: dict):
+        return v["variants"][-1]["url"]
+
+
+class TwitterEntityMediaAnimatedGif(TwitterEntity):
+    type: Literal["animated_gif"]
+    url: AnyHttpUrl = Field(alias="video_info")
+    expanded_url: AnyHttpUrl
+
+    @field_validator("url", mode="before")  # noqa
+    @classmethod
+    def __validate_url(cls, v: dict):
+        return v["variants"][-1]["url"]
+
+
+class TwitterEntitySymbol(TwitterEntity):
+    text: str
+
+
+class TwitterEntityTimestamp(TwitterEntity):
+    pass
+
+
+class TwitterEntityUrl(TwitterEntity):
+    display_url: str
+    expanded_url: str
+    url: str
+
+
+class TwitterEntityUserMention(TwitterEntity):
+    id: int = Field(alias="id_str")
+    name: str
+    screen_name: str
+
+
+class TwitterEntities(BaseModel):
+    hashtags: List[TwitterEntityHashTag] = []
+    media: List[
+        TwitterEntityMediaPhoto
+        | TwitterEntityMediaVideo
+        | TwitterEntityMediaAnimatedGif
+    ] = []
+    symbols: List[TwitterEntitySymbol] = []
+    timestamps: List[TwitterEntityTimestamp] = []
+    urls: List[TwitterEntityUrl] = []
+    user_mentions: List[TwitterEntityUserMention] = []
+
+
+class UserEntities(BaseModel):
+    description: TwitterEntities
+    url: TwitterEntities = TwitterEntities()
+
+
 class TwitterUser(BaseModel):
     id: int
     name: str
@@ -18,6 +92,7 @@ class TwitterUser(BaseModel):
     protected: Optional[bool] = None
     verified: bool
     created_at: Annotated[datetime, BeforeValidator(_twitter_datetime)]
+    entities: UserEntities
     pinned_tweet_ids: List[int] = []
     profile_image_url_normal: AnyHttpUrl = Field(alias="profile_image_url_https")
     profile_banner_url: Optional[AnyHttpUrl] = None
@@ -43,73 +118,6 @@ class TwitterUser(BaseModel):
         return cls.model_validate(result["legacy"] | {"id": result["rest_id"]})
 
 
-class TweetEntity(BaseModel):
-    indices: List[int]
-
-
-class TweetEntityHashTag(TweetEntity):
-    text: str
-
-
-class TweetEntityMediaPhoto(TweetEntity):
-    type: Literal["photo"]
-    url: AnyHttpUrl = Field(alias="media_url_https")
-    expanded_url: AnyHttpUrl
-
-
-class TweetEntityMediaVideo(TweetEntity):
-    type: Literal["video"]
-    url: AnyHttpUrl = Field(alias="video_info")
-    expanded_url: AnyHttpUrl
-
-    @field_validator("url", mode="before")  # noqa
-    @classmethod
-    def __validate_url(cls, v: dict):
-        return v["variants"][-1]["url"]
-
-
-class TweetEntityMediaAnimatedGif(TweetEntity):
-    type: Literal["animated_gif"]
-    url: AnyHttpUrl = Field(alias="video_info")
-    expanded_url: AnyHttpUrl
-
-    @field_validator("url", mode="before")  # noqa
-    @classmethod
-    def __validate_url(cls, v: dict):
-        return v["variants"][-1]["url"]
-
-
-class TweetEntitySymbol(TweetEntity):
-    text: str
-
-
-class TweetEntityTimestamp(TweetEntity):
-    pass
-
-
-class TweetEntityUrl(TweetEntity):
-    display_url: str
-    expanded_url: str
-    url: str
-
-
-class TweetEntityUserMention(TweetEntity):
-    id: int = Field(alias="id_str")
-    name: str
-    screen_name: str
-
-
-class TweetEntities(BaseModel):
-    hashtags: List[TweetEntityHashTag] = []
-    media: List[
-        TweetEntityMediaPhoto | TweetEntityMediaVideo | TweetEntityMediaAnimatedGif
-    ] = []
-    symbols: List[TweetEntitySymbol] = []
-    timestamps: List[TweetEntityTimestamp] = []
-    urls: List[TweetEntityUrl] = []
-    user_mentions: List[TweetEntityUserMention] = []
-
-
 class Tweet(BaseModel):
     id: int = Field(alias="id_str")
     created_at: Annotated[datetime, BeforeValidator(_twitter_datetime)]
@@ -117,7 +125,7 @@ class Tweet(BaseModel):
     display_text_range: List[int]
     lang: str
     possibly_sensitive: bool = False
-    entities: TweetEntities
+    entities: TwitterEntities
     conversation_threads: List[List[Self]] = []
     user: TwitterUser
     views_count: int
