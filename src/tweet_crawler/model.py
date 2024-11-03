@@ -150,9 +150,11 @@ class Tweet(BaseModel):
                 entries: List[dict] = instruction["entries"]
                 base_tweet = cls.from_entry(entries.pop(0))[0]
                 for entry in entries:
-                    if entry["entryId"].startswith("tweet-") or entry[
-                        "entryId"
-                    ].startswith("conversationthread-"):
+                    if entry["entryId"].startswith("tweet-"):
+                        if not base_tweet.conversation_threads:
+                            base_tweet.conversation_threads.append([])
+                        base_tweet.conversation_threads[0].extend(cls.from_entry(entry))
+                    if entry["entryId"].startswith("conversationthread-"):
                         base_tweet.conversation_threads.append(cls.from_entry(entry))
         assert base_tweet
         return base_tweet
