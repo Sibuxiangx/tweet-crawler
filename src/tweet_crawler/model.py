@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Annotated, List, Literal, Optional
 
-from pydantic import AnyHttpUrl, BaseModel, BeforeValidator, Field, field_validator
+from pydantic import AnyHttpUrl, BaseModel, BeforeValidator, Field, model_validator
 from typing_extensions import Self
 
 
@@ -25,24 +25,53 @@ class TwitterEntityMediaPhoto(TwitterEntity):
 
 class TwitterEntityMediaVideo(TwitterEntity):
     type: Literal["video"]
-    url: AnyHttpUrl = Field(alias="video_info")
+    url: AnyHttpUrl
     expanded_url: AnyHttpUrl
+    thumbnail_url: AnyHttpUrl = Field(alias="media_url_https")
+    height: int
+    width: int
+    duration_ms: int
 
-    @field_validator("url", mode="before")  # noqa
+    @model_validator(mode="before")  # noqa
     @classmethod
-    def __validate_url(cls, v: dict):
-        return v["variants"][-1]["url"]
+    def __preprocess_data(cls, v: dict) -> dict:
+        if all(
+            [
+                variants := v.get("video_info", {}).get("variants"),
+                height := v.get("original_info", {}).get("height"),
+                width := v.get("original_info", {}).get("width"),
+                duration_ms := v.get("video_info", {}).get("duration_millis"),
+            ]
+        ):
+            v["url"] = variants[-1]["url"]
+            v["height"] = height
+            v["width"] = width
+            v["duration_ms"] = duration_ms
+        return v
 
 
 class TwitterEntityMediaAnimatedGif(TwitterEntity):
     type: Literal["animated_gif"]
-    url: AnyHttpUrl = Field(alias="video_info")
+    url: AnyHttpUrl
     expanded_url: AnyHttpUrl
+    thumbnail_url: AnyHttpUrl = Field(alias="media_url_https")
+    height: int
+    width: int
 
-    @field_validator("url", mode="before")  # noqa
+    @model_validator(mode="before")  # noqa
     @classmethod
-    def __validate_url(cls, v: dict):
-        return v["variants"][-1]["url"]
+    def __preprocess_data(cls, v: dict) -> dict:
+        if all(
+            [
+                variants := v.get("video_info", {}).get("variants"),
+                height := v.get("original_info", {}).get("height"),
+                width := v.get("original_info", {}).get("width"),
+            ]
+        ):
+            v["url"] = variants[-1]["url"]
+            v["height"] = height
+            v["width"] = width
+        return v
 
 
 class TwitterEntitySymbol(TwitterEntity):
@@ -66,16 +95,16 @@ class TwitterEntityUserMention(TwitterEntity):
 
 
 class TwitterEntities(BaseModel):
-    hashtags: List[TwitterEntityHashTag] = []
+    hashtags: List[TwitterEntityHashTag] = Field(default_factory=list)
     media: List[
         TwitterEntityMediaPhoto
         | TwitterEntityMediaVideo
         | TwitterEntityMediaAnimatedGif
-    ] = []
-    symbols: List[TwitterEntitySymbol] = []
-    timestamps: List[TwitterEntityTimestamp] = []
-    urls: List[TwitterEntityUrl] = []
-    user_mentions: List[TwitterEntityUserMention] = []
+    ] = Field(default_factory=list)
+    symbols: List[TwitterEntitySymbol] = Field(default_factory=list)
+    timestamps: List[TwitterEntityTimestamp] = Field(default_factory=list)
+    urls: List[TwitterEntityUrl] = Field(default_factory=list)
+    user_mentions: List[TwitterEntityUserMention] = Field(default_factory=list)
 
 
 class UserEntities(BaseModel):
@@ -93,7 +122,7 @@ class TwitterUser(BaseModel):
     verified: bool
     created_at: Annotated[datetime, BeforeValidator(_twitter_datetime)]
     entities: UserEntities
-    pinned_tweet_ids: List[int] = []
+    pinned_tweet_ids: List[int] = Field(default_factory=list)
     profile_image_url_normal: AnyHttpUrl = Field(alias="profile_image_url_https")
     profile_banner_url: Optional[AnyHttpUrl] = None
     followers_count: int
@@ -126,7 +155,7 @@ class Tweet(BaseModel):
     lang: str
     possibly_sensitive: bool = False
     entities: TwitterEntities
-    conversation_threads: List[List[Self]] = []
+    conversation_threads: List[List[Self]] = Field(default_factory=list)
     user: TwitterUser
     views_count: int
     bookmark_count: int

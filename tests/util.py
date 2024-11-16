@@ -7,16 +7,6 @@ async def add_cookies(context: BrowserContext):
     await context.add_cookies(
         [
             {
-                "name": "auth_multi",
-                "value": os.environ["AUTH_MULTI"],
-                "domain": ".x.com",
-                "path": "/",
-                "expires": float(os.environ["AUTH_MULTI_EXPIRES"]),
-                "httpOnly": True,
-                "secure": True,
-                "sameSite": "Lax",
-            },
-            {
                 "name": "auth_token",
                 "value": os.environ["AUTH_TOKEN"],
                 "domain": ".x.com",
