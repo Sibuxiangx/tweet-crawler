@@ -33,6 +33,9 @@ class TwitterFollowersCrawler(ScrollableCrawler[TwitterUser]):
         if FOLLOWERS_PATTERN.match(response.url):
             try:
                 await self.parse(json.loads(await response.body()))
+            except Exception as e:  # pragma: no cover
+                self.exception = e
+                self.exception_signal.set()
             finally:
                 self.done_signal.set()
 

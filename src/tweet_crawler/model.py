@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Annotated, List, Literal, Optional
+from typing import Annotated, List, Literal, Optional, Union
 
 from pydantic import AnyHttpUrl, BaseModel, BeforeValidator, Field, model_validator
 from typing_extensions import Self
@@ -147,6 +147,14 @@ class TwitterUser(BaseModel):
         return cls.model_validate(result["legacy"] | {"id": result["rest_id"]})
 
 
+class TweetTombstone(BaseModel):
+    id: int
+    conversation_threads: List[List[Union["Tweet", "TweetTombstone"]]] = Field(
+        default_factory=list
+    )
+    text: str
+
+
 class Tweet(BaseModel):
     id: int = Field(alias="id_str")
     created_at: Annotated[datetime, BeforeValidator(_twitter_datetime)]
@@ -155,7 +163,9 @@ class Tweet(BaseModel):
     lang: str
     possibly_sensitive: bool = False
     entities: TwitterEntities
-    conversation_threads: List[List[Self]] = Field(default_factory=list)
+    conversation_threads: List[List[Union["Tweet", "TweetTombstone"]]] = Field(
+        default_factory=list
+    )
     user: TwitterUser
     views_count: int
     bookmark_count: int
@@ -172,7 +182,7 @@ class Tweet(BaseModel):
         return self.full_text[self.display_text_range[0] : self.display_text_range[1]]
 
     @classmethod
-    def from_instructions(cls, result: List[dict]) -> Self:
+    def from_instructions(cls, result: List[dict]) -> Union["Tweet", "TweetTombstone"]:
         base_tweet = None
         for instruction in result:
             if instruction["type"] == "TimelineAddEntries":
@@ -189,28 +199,33 @@ class Tweet(BaseModel):
         return base_tweet
 
     @classmethod
-    def from_entry(cls, result: dict) -> List[Self]:
+    def from_entry(cls, result: dict) -> List[Union["Tweet", "TweetTombstone"]]:
+        content = result["content"]
         if result["entryId"].startswith("tweet"):
-            return [cls.from_timeline_item(result["content"])]
+            item = content["itemContent"]
+            assert item["itemType"] == "TimelineTweet"
+            return [
+                cls.from_result(
+                    item["tweet_results"]["result"],
+                    rest_id=int(result["entryId"].split("-")[-1]),
+                )
+            ]
         else:
-            return cls.from_timeline_module(result["content"])
+            return [
+                cls.from_result(
+                    item["item"]["itemContent"]["tweet_results"]["result"],
+                    rest_id=int(item["entryId"].split("-")[-1]),
+                )
+                for item in content["items"]
+                if "cursor" not in item["entryId"]
+            ]
 
     @classmethod
-    def from_timeline_item(cls, result: dict) -> Self:
-        item = result["itemContent"]
-        assert item["itemType"] == "TimelineTweet"
-        return cls.from_result(item["tweet_results"]["result"])
-
-    @classmethod
-    def from_timeline_module(cls, result: dict) -> List[Self]:
-        return [
-            cls.from_result(item["item"]["itemContent"]["tweet_results"]["result"])
-            for item in result["items"]
-            if "cursor" not in item["entryId"]
-        ]
-
-    @classmethod
-    def from_result(cls, result: dict) -> Self:
+    def from_result(
+        cls, result: dict, rest_id: int
+    ) -> Union["Tweet", "TweetTombstone"]:
+        if result["__typename"] == "TweetTombstone":
+            return TweetTombstone(id=rest_id, text=result["tombstone"]["text"]["text"])
         if result["__typename"] == "TweetWithVisibilityResults":
             result = result["tweet"]
         return cls.model_validate(

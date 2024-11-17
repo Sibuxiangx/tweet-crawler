@@ -13,6 +13,7 @@ from util import add_cookies
 
 from tweet_crawler import TwitterStatusCrawler
 from tweet_crawler.exception import TweetUnavailable
+from tweet_crawler.model import TweetTombstone
 
 load_dotenv()
 
@@ -135,10 +136,14 @@ class StatusCase(unittest.IsolatedAsyncioTestCase):
         result = await crawler.run()
         self.assertIsNotNone(result.conversation_threads)
         for index, thread in enumerate(result.conversation_threads):
-            print(f"{index + 1}.\t{thread[0].id=} ({thread[0].user.handle})")
-            print(f"\t{thread[0].user.profile_image_url=}")
-            print(f"\t{thread[0].full_text=}")
-            print(f"\t{thread[0].text=}")
+            threaded = thread[0]
+            if isinstance(threaded, TweetTombstone):  # pragma: no cover
+                print(f"{index + 1}.\t[Tombstone] {threaded.text}")
+                continue
+            print(f"{index + 1}.\t{threaded.id=} ({threaded.user.handle})")
+            print(f"\t{threaded.user.profile_image_url=}")
+            print(f"\t{threaded.full_text=}")
+            print(f"\t{threaded.text=}")
         print("===== done =====")
 
     async def test_tweet_with_visibility(self):
@@ -147,6 +152,27 @@ class StatusCase(unittest.IsolatedAsyncioTestCase):
         result = await crawler.run()
         print(f"{result.full_text=}")
         print(f"{result.text=}")
+        print("===== done =====")
+
+    async def test_tweet_main_tombstone(self):
+        print("\n===== test_tweet_main_tombstone =====")
+        crawler = TwitterStatusCrawler(self.page, os.environ["TWEET_MAIN_TOMBSTONE"])
+        with self.assertRaises(TweetUnavailable):
+            await crawler.run()
+        print("===== done =====")
+
+    async def test_tweet_thread_tombstone(self):
+        print("\n===== test_tweet_thread_tombstone =====")
+        crawler = TwitterStatusCrawler(self.page, os.environ["TWEET_THREAD_TOMBSTONE"])
+        result = await crawler.run()
+        has_tombstone = False
+        for index, thread in enumerate(result.conversation_threads):
+            for t_index, threaded in enumerate(thread):
+                if isinstance(threaded, TweetTombstone):
+                    has_tombstone = True
+                    print(f"{index + 1}.{t_index}.\t[Tombstone] {threaded.text}")
+                    break
+        self.assertTrue(has_tombstone)
         print("===== done =====")
 
 
