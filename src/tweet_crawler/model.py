@@ -116,7 +116,7 @@ class TwitterUser(BaseModel):
     id: int
     name: str
     screen_name: str
-    location: str
+    location: Optional[str] = None
     description: str
     protected: Optional[bool] = None
     verified: bool
@@ -144,7 +144,51 @@ class TwitterUser(BaseModel):
 
     @classmethod
     def from_result(cls, result: dict) -> Self:
-        return cls.model_validate(result["legacy"] | {"id": result["rest_id"]})
+        legacy_data = result.get("legacy", {})
+        user_data = {
+            "id": result.get("rest_id"),
+            "name": legacy_data.get("name"),
+            "screen_name": legacy_data.get("screen_name"),
+            "description": legacy_data.get("description"),
+            "protected": legacy_data.get("protected"),
+            "verified": result.get("verification", {}).get("verified", False) if "verification" in result else legacy_data.get("verified", False), # Handle new and old structures
+            "created_at": legacy_data.get("created_at"),
+            "entities": legacy_data.get("entities", {}),
+            "pinned_tweet_ids": legacy_data.get("pinned_tweet_ids_str", []),
+            "profile_image_url_https": result.get("avatar", {}).get("image_url") if "avatar" in result else legacy_data.get("profile_image_url_https"), # Handle new and old structures
+            "profile_banner_url": legacy_data.get("profile_banner_url"),
+            "followers_count": legacy_data.get("followers_count"),
+            "friends_count": legacy_data.get("friends_count"),
+            "listed_count": legacy_data.get("listed_count"),
+            "favourites_count": legacy_data.get("favourites_count"),
+            "statuses_count": legacy_data.get("statuses_count"),
+            "following": result.get("relationship_perspectives", {}).get("following"),
+            "can_dm": result.get("dm_permissions", {}).get("can_dm"),
+        }
+        # Extract location
+        location_data = result.get("location", {})
+        if isinstance(location_data, dict) and "location" in location_data:
+            user_data["location"] = location_data["location"]
+        elif isinstance(location_data, str): # for legacy structure if any
+             user_data["location"] = location_data
+        else:
+            user_data["location"] = legacy_data.get("location")
+
+
+        # Filter out None values to allow Pydantic to use default_factory or defaults
+        validated_data = {k: v for k, v in user_data.items() if v is not None or k in ['profile_banner_url', 'location', 'protected', 'followed_by', 'following', 'can_dm']}
+        
+        # Ensure entities is properly structured if it comes from legacy_data without sub-fields
+        if 'entities' in validated_data and isinstance(validated_data['entities'], dict):
+            if 'description' not in validated_data['entities']:
+                validated_data['entities']['description'] = {"urls": []} # default empty structure
+            if 'url' not in validated_data['entities'] and 'urls' in legacy_data.get('entities', {}).get('url', {}): # Check if 'url' itself has 'urls'
+                 validated_data['entities']['url'] = legacy_data['entities']['url']
+            elif 'url' not in validated_data['entities']:
+                 validated_data['entities']['url'] = {"urls": []}
+
+
+        return cls.model_validate(validated_data)
 
 
 class TweetTombstone(BaseModel):
