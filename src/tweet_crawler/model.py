@@ -286,12 +286,58 @@ class Tweet(BaseModel):
             return TweetTombstone(id=rest_id, text=result["tombstone"]["text"]["text"])
         if result["__typename"] == "TweetWithVisibilityResults":
             result = result["tweet"]
-        return cls.model_validate(
-            result["legacy"]
-            | {
-                "views_count": result["views"].get("count", 0),
-                "user": TwitterUser.from_result(
-                    result["core"]["user_results"]["result"]
-                ),
-            }
-        )
+        
+        # 确保用户数据存在并且包含必要的字段
+        user_data = None
+        try:
+            # 尝试从核心数据中获取用户数据
+            if "core" in result and "user_results" in result["core"] and "result" in result["core"]["user_results"]:
+                user_data = TwitterUser.from_result(result["core"]["user_results"]["result"])
+            # 如果上面的路径失败，尝试其他可能的路径
+            elif "user_results" in result and "result" in result["user_results"]:
+                user_data = TwitterUser.from_result(result["user_results"]["result"])
+            elif "user" in result["legacy"]:
+                user_data = TwitterUser.from_result(result["legacy"]["user"])
+            else:
+                # 如果找不到用户数据，创建一个最小化的默认用户
+                user_data = TwitterUser.model_validate({
+                    "id": 0,
+                    "name": "Unknown User",
+                    "screen_name": "unknown",
+                    "description": "",
+                    "verified": False,
+                    "created_at": "Mon Jan 01 00:00:00 +0000 2020",
+                    "entities": {"description": {"urls": []}, "url": {"urls": []}},
+                    "profile_image_url_https": "https://abs.twimg.com/sticky/default_profile_images/default_profile_normal.png",
+                    "followers_count": 0,
+                    "friends_count": 0,
+                    "listed_count": 0,
+                    "favourites_count": 0,
+                    "statuses_count": 0
+                })
+        except Exception as e:
+            # 如果处理用户数据时出现任何异常，使用默认用户
+            print(f"Error processing user data: {e}")
+            user_data = TwitterUser.model_validate({
+                "id": 0,
+                "name": "Unknown User",
+                "screen_name": "unknown",
+                "description": "",
+                "verified": False,
+                "created_at": "Mon Jan 01 00:00:00 +0000 2020",
+                "entities": {"description": {"urls": []}, "url": {"urls": []}},
+                "profile_image_url_https": "https://abs.twimg.com/sticky/default_profile_images/default_profile_normal.png",
+                "followers_count": 0,
+                "friends_count": 0,
+                "listed_count": 0,
+                "favourites_count": 0,
+                "statuses_count": 0
+            })
+        
+        # 构建推文数据
+        tweet_data = result["legacy"] | {
+            "views_count": result.get("views", {}).get("count", 0),
+            "user": user_data,
+        }
+        
+        return cls.model_validate(tweet_data)
