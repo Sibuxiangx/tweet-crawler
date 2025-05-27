@@ -145,48 +145,62 @@ class TwitterUser(BaseModel):
     @classmethod
     def from_result(cls, result: dict) -> Self:
         legacy_data = result.get("legacy", {})
+        
+        # 获取核心用户信息，可能在core字段中
+        core_data = result.get("core", {})
+        
+        # 构建用户数据字典
         user_data = {
+            # 尝试从多个可能的位置获取必填字段
             "id": result.get("rest_id"),
-            "name": legacy_data.get("name"),
-            "screen_name": legacy_data.get("screen_name"),
-            "description": legacy_data.get("description"),
-            "protected": legacy_data.get("protected"),
-            "verified": result.get("verification", {}).get("verified", False) if "verification" in result else legacy_data.get("verified", False), # Handle new and old structures
-            "created_at": legacy_data.get("created_at"),
+            "name": core_data.get("name") if "name" in core_data else legacy_data.get("name"),
+            "screen_name": core_data.get("screen_name") if "screen_name" in core_data else legacy_data.get("screen_name"),
+            "description": legacy_data.get("description", ""),
+            "protected": result.get("privacy", {}).get("protected") if "privacy" in result else legacy_data.get("protected", False),
+            "verified": result.get("verification", {}).get("verified", False) if "verification" in result else legacy_data.get("verified", False),
+            "created_at": core_data.get("created_at") if "created_at" in core_data else legacy_data.get("created_at"),
             "entities": legacy_data.get("entities", {}),
             "pinned_tweet_ids": legacy_data.get("pinned_tweet_ids_str", []),
-            "profile_image_url_https": result.get("avatar", {}).get("image_url") if "avatar" in result else legacy_data.get("profile_image_url_https"), # Handle new and old structures
+            "profile_image_url_https": result.get("avatar", {}).get("image_url") if "avatar" in result else legacy_data.get("profile_image_url_https"),
             "profile_banner_url": legacy_data.get("profile_banner_url"),
-            "followers_count": legacy_data.get("followers_count"),
-            "friends_count": legacy_data.get("friends_count"),
-            "listed_count": legacy_data.get("listed_count"),
-            "favourites_count": legacy_data.get("favourites_count"),
-            "statuses_count": legacy_data.get("statuses_count"),
+            "followers_count": legacy_data.get("followers_count", 0),
+            "friends_count": legacy_data.get("friends_count", 0),
+            "listed_count": legacy_data.get("listed_count", 0),
+            "favourites_count": legacy_data.get("favourites_count", 0),
+            "statuses_count": legacy_data.get("statuses_count", 0),
             "following": result.get("relationship_perspectives", {}).get("following"),
+            "followed_by": result.get("relationship_perspectives", {}).get("followed_by"),
             "can_dm": result.get("dm_permissions", {}).get("can_dm"),
         }
-        # Extract location
+        
+        # 处理位置信息
         location_data = result.get("location", {})
         if isinstance(location_data, dict) and "location" in location_data:
             user_data["location"] = location_data["location"]
-        elif isinstance(location_data, str): # for legacy structure if any
-             user_data["location"] = location_data
+        elif isinstance(location_data, str):  # 处理旧格式
+            user_data["location"] = location_data
         else:
             user_data["location"] = legacy_data.get("location")
 
-
-        # Filter out None values to allow Pydantic to use default_factory or defaults
+        # 过滤掉None值，以允许Pydantic使用默认值
         validated_data = {k: v for k, v in user_data.items() if v is not None or k in ['profile_banner_url', 'location', 'protected', 'followed_by', 'following', 'can_dm']}
         
-        # Ensure entities is properly structured if it comes from legacy_data without sub-fields
+        # 确保entities结构正确
         if 'entities' in validated_data and isinstance(validated_data['entities'], dict):
             if 'description' not in validated_data['entities']:
-                validated_data['entities']['description'] = {"urls": []} # default empty structure
-            if 'url' not in validated_data['entities'] and 'urls' in legacy_data.get('entities', {}).get('url', {}): # Check if 'url' itself has 'urls'
-                 validated_data['entities']['url'] = legacy_data['entities']['url']
+                validated_data['entities']['description'] = {"urls": []}  # 默认空结构
+            if 'url' not in validated_data['entities'] and 'urls' in legacy_data.get('entities', {}).get('url', {}):
+                validated_data['entities']['url'] = legacy_data['entities']['url']
             elif 'url' not in validated_data['entities']:
-                 validated_data['entities']['url'] = {"urls": []}
+                validated_data['entities']['url'] = {"urls": []}
 
+        # 确保所有必填字段都有值，如果没有则提供默认值
+        if "name" not in validated_data or validated_data["name"] is None:
+            validated_data["name"] = "Unknown"
+        if "screen_name" not in validated_data or validated_data["screen_name"] is None:
+            validated_data["screen_name"] = "unknown_user"
+        if "created_at" not in validated_data or validated_data["created_at"] is None:
+            validated_data["created_at"] = "Mon Jan 01 00:00:00 +0000 2020"  # 提供默认日期
 
         return cls.model_validate(validated_data)
 
